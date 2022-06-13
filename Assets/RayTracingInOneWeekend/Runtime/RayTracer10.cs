@@ -8,7 +8,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer8
+namespace rtwk.RayTracer10
 {
 
 struct Ray
@@ -154,7 +154,7 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "RayTracer8: Diffuse sphere, with gamma correction"; }
+    public string desc { get => "RayTracer10: Rendering of diffuse spheres with hemispherical scattering"; }
 
     public Texture2D texture { get; private set; }
 
@@ -219,7 +219,6 @@ public class RayTracer : IRayTracer
         [ReadOnly]
         public HittableList world;
 
-        [WriteOnly]
         public NativeArray<Color24> pixels;
 
         public void Execute(int i)
@@ -250,13 +249,27 @@ public class RayTracer : IRayTracer
 
             if (world.Hit(ray, 0, double.PositiveInfinity, out var rec))
             {
-                var target = rec.p + rec.normal + RandomInUnitSphere();
+                var target = rec.p + RandomInHemisphere(rec.normal);
                 return 0.5 * RayColor(new Ray(rec.p, target - rec.p), world, depth - 1);
             }
 
             var dir = normalize(ray.dir);
             var t = 0.5 * (dir.y + 1);
             return (1.0 - t) * double3(1.0, 1.0, 1.0) + t * double3(0.5, 0.7, 1.0);
+        }
+
+        double3 RandomInHemisphere(double3 normal)
+        {
+            var s = RandomInUnitSphere();
+            if (dot(s, normal) > 0)
+                return s;
+            else
+                return -s;
+        }
+
+        double3 RandomUnitVector()
+        {
+            return normalize(RandomInUnitSphere());
         }
     
         double3 RandomInUnitSphere()

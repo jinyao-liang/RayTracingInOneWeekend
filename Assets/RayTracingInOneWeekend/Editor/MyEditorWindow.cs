@@ -20,6 +20,9 @@ public class MyEditorWindow : EditorWindow
         typeof(rtwk.RayTracer6.RayTracer),
         typeof(rtwk.RayTracer7.RayTracer),
         typeof(rtwk.RayTracer8.RayTracer),
+        typeof(rtwk.RayTracer9.RayTracer),
+        typeof(rtwk.RayTracer10.RayTracer),
+        typeof(rtwk.RayTracer11.RayTracer),
     };
 
     IRayTracer activeRayTracer;
