@@ -24,7 +24,7 @@ struct Ray
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "RayTracer2: A blue-to-white gradient depending on ray Y coordinate"; }
+    public string desc { get => "A blue-to-white gradient depending on ray Y coordinate"; }
 
     public Texture2D texture { get; private set; }
 

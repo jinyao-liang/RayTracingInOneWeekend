@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using UnityEngine; 
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
+using Unity.Jobs.LowLevel.Unsafe;
 using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer11
+namespace rtwk.RayTracer8m
 {
 
 struct Ray
@@ -28,72 +30,6 @@ struct Ray
     }
 }
 
-enum MaterialType
-{
-    Lambertian,
-    Metal,
-}
-
-struct Material
-{
-    public MaterialType type;
-    public double3 albedo;
-
-    public Material(MaterialType t, double3 a)
-    {
-        type = t;
-        albedo = a;
-    }
-
-    public bool Scatter(Ray r, HitRecord rec, out double3 attenuation, out Ray scattered, ref Random random)
-    {
-        switch (type)
-        {
-        case MaterialType.Lambertian:
-            return LambertianScatter(r, rec, out attenuation, out scattered, ref random);
-        case MaterialType.Metal:
-            return MetalScatter(r, rec, out attenuation, out scattered, ref random);
-        }
-        
-        return LambertianScatter(r, rec, out attenuation, out scattered, ref random);
-    }
-
-    bool LambertianScatter(Ray r, HitRecord rec, out double3 attenuation, out Ray scattered, ref Random random)
-    {
-        var dir = rec.normal + RandomUnitVector(ref random);
-        if (lengthsq(abs(dir)) < 0.0001)
-            dir = rec.normal;
-
-        scattered = new Ray(rec.p, dir);
-        attenuation = albedo;
-        return true;
-    }
-
-    bool MetalScatter(Ray r, HitRecord rec, out double3 attenuation, out Ray scattered, ref Random random)
-    {
-        var reflected = reflect(normalize(r.dir), rec.normal);
-        scattered = new Ray(rec.p, reflected);
-        attenuation = albedo;
-        return (dot(scattered.dir, rec.normal) > 0);
-    }
-
-    double3 RandomUnitVector(ref Random random)
-    {
-        return normalize(RandomInUnitSphere(ref random));
-    }
-
-    double3 RandomInUnitSphere(ref Random random)
-    {
-        while (true)
-        {
-            var p = random.NextDouble3(double3(-1, -1, -1), double3(1, 1, 1));
-            if (lengthsq(p) <= 1)
-                return p;
-        }
-    }
-
-}
-
 struct HitRecord
 {
     public double3 p;
@@ -104,8 +40,6 @@ struct HitRecord
 
     public bool frontFace;
 
-    public Material mat;
-
     public void SetFaceNormal(Ray r, double3 outNormal)
     {
         frontFace = dot(r.dir, outNormal) < 0;
@@ -113,22 +47,15 @@ struct HitRecord
     }
 }
 
-interface Hittable
-{
-    bool Hit(Ray r, double tMin, double tMax, out HitRecord rec);
-}
-
-struct Sphere : Hittable
+struct Sphere
 {
     public double3 center;
     public double radius;
-    public Material mat;
 
-    public Sphere(double3 c, double r, Material m)
+    public Sphere(double3 c, double r)
     {
         center = c;
         radius = r;
-        mat = m;
     }
 
     public bool Hit(Ray r, double tMin, double tMax, out HitRecord rec)
@@ -152,7 +79,6 @@ struct Sphere : Hittable
                 return false;
         }
 
-        rec.mat = mat;
         rec.t = root;
         rec.p = r.At(rec.t);
         rec.SetFaceNormal(r, (rec.p - center) / radius);
@@ -160,7 +86,7 @@ struct Sphere : Hittable
     }
 }
 
-struct HittableList : Hittable
+struct HittableList
 {
     NativeArray<Sphere> objects;
 
@@ -225,13 +151,14 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Shiny metal"; }
+    public string desc { get => "Diffuse sphere, with gamma correction"; }
 
     public Texture2D texture { get; private set; }
 
     public bool isCompleted { get => rayColorJobHandle.IsCompleted; }
 
     HittableList world;
+    NativeArray<Random> randomArray;
     JobHandle rayColorJobHandle;
 
     public void Run()
@@ -253,16 +180,9 @@ public class RayTracer : IRayTracer
         var vertical = new double3(0, viewportHeight, 0);
         var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
 
-        var matGround = new Material(MaterialType.Lambertian, double3(0.8, 0.8, 0.0));
-        var matCenter = new Material(MaterialType.Lambertian, double3(0.7, 0.3, 0.3));
-        var matLeft = new Material(MaterialType.Metal, double3(0.8, 0.8, 0.8));
-        var matRight = new Material(MaterialType.Metal, double3(0.8, 0.6, 0.2));
-
         world = new HittableList(new List<Sphere> {
-            new Sphere(double3(0, -100.5, -1), 100, matGround),
-            new Sphere(double3(0, 0, -1), 0.5, matCenter),
-            new Sphere(double3(-1, 0, -1), 0.5, matLeft),
-            new Sphere(double3(1, 0, -1), 0.5, matRight)
+            new Sphere(double3(0, 0, -1), 0.5),
+            new Sphere(double3(0, -100.5, -1), 100),
         });
 
         var cam = new Camera(aspectRatio);
@@ -270,9 +190,16 @@ public class RayTracer : IRayTracer
         texture = new Texture2D(imageWidth, imageHeight, TextureFormat.RGB24, false, false);
         var textureData = texture.GetRawTextureData<Color24>();
 
+        var rnd = new Random((uint)DateTime.Now.Millisecond);
+        randomArray = new NativeArray<Random>(JobsUtility.MaxJobThreadCount, Allocator.Persistent);
+        for (int i = 0; i < randomArray.Length; i++)
+        {
+            randomArray[i] = new Random((uint)rnd.NextInt());
+        }
+
         var job = new RayColorJob
         {
-            random = new Random((uint)DateTime.Now.Millisecond),
+            randomArray = randomArray,
             imageWidth = imageWidth,
             imageHeight = imageHeight,
             samples = samplesPerPixel,
@@ -281,13 +208,15 @@ public class RayTracer : IRayTracer
             world = world,
             pixels = textureData
         };
-        rayColorJobHandle = job.Schedule(imageWidth * imageHeight, 64);
+        rayColorJobHandle = job.Schedule(imageWidth * imageHeight, 32);
     }
     
     [BurstCompile(CompileSynchronously = true)]
     struct RayColorJob : IJobParallelFor
     {
-        public Random random;
+        [NativeDisableParallelForRestriction]
+        public NativeArray<Random> randomArray;
+
         public int imageWidth;
         public int imageHeight;
         public int samples;
@@ -297,7 +226,11 @@ public class RayTracer : IRayTracer
         [ReadOnly]
         public HittableList world;
 
+        [WriteOnly]
         public NativeArray<Color24> pixels;
+
+        [Unity.Collections.LowLevel.Unsafe.NativeSetThreadIndex]
+        private int nativeThreadIndex;
 
         public void Execute(int i)
         {
@@ -308,13 +241,12 @@ public class RayTracer : IRayTracer
             var color = double3(0, 0, 0);
             for(int s = 0; s < samples; s++)
             {
-                var u = (double)(x + random.NextDouble()) / (imageWidth - 1);
-                var v = (double)(y + random.NextDouble()) / (imageHeight - 1);
+                var u = (double)(x + NextDouble()) / (imageWidth - 1);
+                var v = (double)(y + NextDouble()) / (imageHeight - 1);
                 color += RayColor(cam.GetRay(u, v), world, depth);
             }
 
-            color *= sampleScale;
-            color = sqrt(color);
+            color = sqrt(color * sampleScale);
             color = clamp(color, double3(0, 0, 0), double3(0.999, 0.999, 0.999));
 
             pixels[i] = Color24.FromDouble3(color);
@@ -327,16 +259,39 @@ public class RayTracer : IRayTracer
 
             if (world.Hit(ray, 0, double.PositiveInfinity, out var rec))
             {
-                Ray scattered;
-                double3 attenuation;
-                if (rec.mat.Scatter(ray, rec, out attenuation, out scattered, ref random))
-                    return attenuation * RayColor(scattered, world, depth - 1);
-                return double3(0, 0, 0);
+                var target = rec.p + rec.normal + RandomInUnitSphere();
+                return 0.5 * RayColor(new Ray(rec.p, target - rec.p), world, depth - 1);
             }
 
             var dir = normalize(ray.dir);
             var t = 0.5 * (dir.y + 1);
             return (1.0 - t) * double3(1.0, 1.0, 1.0) + t * double3(0.5, 0.7, 1.0);
+        }
+
+        double NextDouble()
+        {
+            var rnd = randomArray[nativeThreadIndex];
+            var v = rnd.NextDouble();
+            randomArray[nativeThreadIndex] = rnd;
+            return v;
+        }
+
+        double3 NextDouble3(double3 min, double3 max)
+        {
+            var rnd = randomArray[nativeThreadIndex];
+            var v = rnd.NextDouble3(min, max);
+            randomArray[nativeThreadIndex] = rnd;
+            return v;
+        }
+    
+        double3 RandomInUnitSphere()
+        {
+            while (true)
+            {
+                var p = NextDouble3(double3(-1, -1, -1), double3(1, 1, 1));
+                if (lengthsq(p) <= 1)
+                    return p;
+            }
         }
     }
 
@@ -344,6 +299,7 @@ public class RayTracer : IRayTracer
     {
         rayColorJobHandle.Complete();
         world.Dispose();
+        randomArray.Dispose();
     }
 
 } // class RayTracer

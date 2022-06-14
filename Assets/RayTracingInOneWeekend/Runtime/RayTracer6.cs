@@ -141,7 +141,7 @@ class Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "RayTracer6: antialiasing"; }
+    public string desc { get => "antialiasing"; }
 
     public Texture2D texture { get; private set; }
 

@@ -19,9 +19,15 @@ public class MyEditorWindow : EditorWindow
         typeof(rtwk.RayTracer5.RayTracer),
         typeof(rtwk.RayTracer6.RayTracer),
         typeof(rtwk.RayTracer7.RayTracer),
+    };
+    
+    static Type[] rayTracerPairList = new Type[] {
         typeof(rtwk.RayTracer8.RayTracer),
+        typeof(rtwk.RayTracer8m.RayTracer),
         typeof(rtwk.RayTracer9.RayTracer),
+        typeof(rtwk.RayTracer9m.RayTracer),
         typeof(rtwk.RayTracer10.RayTracer),
+        typeof(rtwk.RayTracer10m.RayTracer),
         typeof(rtwk.RayTracer11.RayTracer),
     };
 
@@ -36,17 +42,40 @@ public class MyEditorWindow : EditorWindow
         EditorWindow.GetWindow(typeof(MyEditorWindow));
     }
 
+    string GetRayTracerTypeName(Type t)
+    {
+        return t.FullName.Substring(5, t.FullName.Length-15);
+    }
+
     void OnGUI () {
         EditorGUILayout.Space();
 
         GUI.enabled = activeRayTracer == null;
         for(int i = 0; i < rayTracerList.Length; i++)
         {
-            if(GUILayout.Button($"Run {rayTracerList[i].FullName.Substring(5, rayTracerList[i].FullName.Length-15)}"))
+            if(GUILayout.Button($"Run {GetRayTracerTypeName(rayTracerList[i])}"))
             {
                 var rayTracer = (IRayTracer)Activator.CreateInstance(rayTracerList[i]);
                 EditorCoroutineUtility.StartCoroutine(RunRayTracer(rayTracer), this);
             }
+        }
+        for(int i = 0; i < rayTracerPairList.Length; i+=2)
+        {
+            EditorGUILayout.BeginHorizontal();
+            if(GUILayout.Button($"Run {GetRayTracerTypeName(rayTracerPairList[i])}"))
+            {
+                var rayTracer = (IRayTracer)Activator.CreateInstance(rayTracerPairList[i]);
+                EditorCoroutineUtility.StartCoroutine(RunRayTracer(rayTracer), this);
+            }
+            if (i+1 < rayTracerPairList.Length)
+            {
+                if(GUILayout.Button($"Run {GetRayTracerTypeName(rayTracerPairList[i+1])}"))
+                {
+                    var rayTracer = (IRayTracer)Activator.CreateInstance(rayTracerPairList[i+1]);
+                    EditorCoroutineUtility.StartCoroutine(RunRayTracer(rayTracer), this);
+                }
+            }
+            EditorGUILayout.EndHorizontal();
         }
         GUI.enabled = true;
 
@@ -90,9 +119,9 @@ public class MyEditorWindow : EditorWindow
         }
 
         stopWatch.Stop();
-        Debug.Log($"Done in {stopWatch.Elapsed.TotalSeconds:F2} seconds.");
+        Debug.Log($"{GetRayTracerTypeName(rayTracer.GetType())} finish running in {stopWatch.Elapsed.TotalSeconds:F2} seconds.");
 
-        previewDesc = rayTracer.desc;
+        previewDesc = $"{GetRayTracerTypeName(activeRayTracer.GetType())}: {rayTracer.desc}";
         previewTexture = rayTracer.texture;
         previewTexture.Apply();
         Repaint();

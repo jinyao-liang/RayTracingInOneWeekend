@@ -24,7 +24,7 @@ struct Ray
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "RayTracer4: A sphere colored according to its normal vectors"; }
+    public string desc { get => "A sphere colored according to its normal vectors"; }
 
     public Texture2D texture { get; private set; }
 

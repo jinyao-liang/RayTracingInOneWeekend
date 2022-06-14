@@ -141,7 +141,7 @@ class Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "RayTracer7: First render of a diffuse sphere"; }
+    public string desc { get => "First render of a diffuse sphere"; }
 
     public Texture2D texture { get; private set; }
 

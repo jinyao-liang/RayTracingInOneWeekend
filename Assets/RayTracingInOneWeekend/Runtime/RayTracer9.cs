@@ -1,14 +1,8 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine; 
-using Unity.Burst;
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using Unity.Jobs;
-using Unity.Jobs.LowLevel.Unsafe;
 using Unity.Mathematics;
 using static Unity.Mathematics.math;
-using Random = Unity.Mathematics.Random;
 
 namespace rtwk.RayTracer9
 {
@@ -47,12 +41,12 @@ struct HitRecord
     }
 }
 
-interface Hittable
+abstract class Hittable
 {
-    bool Hit(Ray r, double tMin, double tMax, out HitRecord rec);
+    public abstract bool Hit(Ray r, double tMin, double tMax, out HitRecord rec);
 }
 
-struct Sphere : Hittable
+class Sphere : Hittable
 {
     public double3 center;
     public double radius;
@@ -63,7 +57,7 @@ struct Sphere : Hittable
         radius = r;
     }
 
-    public bool Hit(Ray r, double tMin, double tMax, out HitRecord rec)
+    public override bool Hit(Ray r, double tMin, double tMax, out HitRecord rec)
     {
         rec = new HitRecord();
 
@@ -91,25 +85,16 @@ struct Sphere : Hittable
     }
 }
 
-struct HittableList : Hittable
+class HittableList : Hittable
 {
-    NativeArray<Sphere> objects;
+    public List<Hittable> objects = new List<Hittable>();
 
-    public HittableList(List<Sphere> list)
+    public void Add(Hittable obj)
     {
-        objects = new NativeArray<Sphere>(list.Count, Allocator.Persistent);
-        for(int i = 0; i < list.Count; i++)
-        {
-            objects[i] = list[i];
-        }
+        objects.Add(obj);
     }
 
-    public void Dispose()
-    {
-        objects.Dispose();
-    }
-
-    public bool Hit(Ray r, double tMin, double tMax, out HitRecord rec)
+    public override bool Hit(Ray r, double tMin, double tMax, out HitRecord rec)
     {
         rec = new HitRecord();
         var hitAny = false;
@@ -129,7 +114,7 @@ struct HittableList : Hittable
     }
 }
 
-struct Camera
+class Camera
 {
     double3 origin;
     double3 horizontal;
@@ -156,14 +141,13 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "RayTracer9: Correct rendering of Lambertian spheres"; }
+    public string desc { get => "Correct rendering of Lambertian spheres"; }
 
     public Texture2D texture { get; private set; }
 
-    public bool isCompleted { get => rayColorJobHandle.IsCompleted; }
+    public bool isCompleted { get => texture != null; }
 
-    HittableList world;
-    JobHandle rayColorJobHandle;
+    Unity.Mathematics.Random random = new Unity.Mathematics.Random((uint)DateTime.Now.Millisecond);
 
     public void Run()
     {
@@ -184,116 +168,71 @@ public class RayTracer : IRayTracer
         var vertical = new double3(0, viewportHeight, 0);
         var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
 
-        world = new HittableList(new List<Sphere> {
-            new Sphere(double3(0, 0, -1), 0.5),
-            new Sphere(double3(0, -100.5, -1), 100),
-        });
+        var world = new HittableList();
+        world.Add(new Sphere(double3(0, 0, -1), 0.5));
+        world.Add(new Sphere(double3(0, -100.5, -1), 100));
 
         var cam = new Camera(aspectRatio);
 
-        texture = new Texture2D(imageWidth, imageHeight, TextureFormat.RGB24, false, false);
-        var textureData = texture.GetRawTextureData<Color24>();
+        var tex = new Texture2D(imageWidth, imageHeight, TextureFormat.RGB24, false);
+        var data = tex.GetRawTextureData<Color24>();
 
-        var rnd = new Random((uint)DateTime.Now.Millisecond);
-        var randoms = new NativeArray<Random>(JobsUtility.MaxJobThreadCount, Allocator.Persistent);
-        for (int i = 0; i < randoms.Length; i++)
+        for (int y = 0; y < imageHeight; y++)
         {
-            randoms[i] = new Random((uint)rnd.NextInt());
+            for (int x = 0; x < imageWidth; x++)
+            {
+                var color = double3(0, 0, 0);
+                for(int s = 0; s < samplesPerPixel; s++)
+                {
+                    var u = (double)(x + random.NextDouble()) / (imageWidth - 1);
+                    var v = (double)(y + random.NextDouble()) / (imageHeight - 1);
+                    color += RayColor(cam.GetRay(u, v), world, maxDepth);
+                }
+
+                color = sqrt(color * sampleScale);
+                color = clamp(color, double3(0, 0, 0), double3(0.999, 0.999, 0.999));
+
+                data[y * imageWidth + x] = Color24.FromDouble3(color);
+            }
         }
 
-        var job = new RayColorJob
-        {
-            imageWidth = imageWidth,
-            imageHeight = imageHeight,
-            samples = samplesPerPixel,
-            depth = maxDepth,
-            cam = cam,
-            world = world,
-            randoms = randoms,
-            pixels = textureData
-        };
-        rayColorJobHandle = job.Schedule(imageWidth * imageHeight, 32);
+        tex.Apply();
+        texture = tex;
     }
     
-    [BurstCompile(CompileSynchronously = true)]
-    struct RayColorJob : IJobParallelFor
+    double3 RayColor(Ray ray, HittableList world, int depth)
     {
-        public int imageWidth;
-        public int imageHeight;
-        public int samples;
-        public int depth;
-        public Camera cam;
+        if (depth <= 0)
+            return double3(0, 0, 0);
 
-        [NativeSetThreadIndex]
-        private int tid;
-        
-        [NativeDisableParallelForRestriction]
-        [DeallocateOnJobCompletion]
-        public NativeArray<Random> randoms;
-
-        [ReadOnly]
-        public HittableList world;
-
-        [WriteOnly]
-        public NativeArray<Color24> pixels;
-
-        public void Execute(int i)
+        if (world.Hit(ray, 0.001, double.PositiveInfinity, out var rec))
         {
-            var x = i % imageWidth;
-            var y = (i / imageWidth);
-            var sampleScale = 1.0 / samples;
-
-            var color = double3(0, 0, 0);
-            for(int s = 0; s < samples; s++)
-            {
-                var u = (double)(x + randoms[tid].NextDouble()) / (imageWidth - 1);
-                var v = (double)(y + randoms[tid].NextDouble()) / (imageHeight - 1);
-                color += RayColor(cam.GetRay(u, v), world, depth);
-            }
-
-            color *= sampleScale;
-            color = sqrt(color);
-            color = clamp(color, double3(0, 0, 0), double3(0.999, 0.999, 0.999));
-
-            pixels[i] = Color24.FromDouble3(color);
+            var target = rec.p + rec.normal + RandomUnitVector();
+            return 0.5 * RayColor(new Ray(rec.p, target - rec.p), world, depth - 1);
         }
 
-        double3 RayColor(Ray ray, HittableList world, int depth)
-        {
-            if (depth <= 0)
-                return double3(0, 0, 0);
+        var dir = normalize(ray.dir);
+        var t = 0.5 * (dir.y + 1);
+        return (1.0 - t) * double3(1.0, 1.0, 1.0) + t * double3(0.5, 0.7, 1.0);
+    }
 
-            if (world.Hit(ray, 0, double.PositiveInfinity, out var rec))
-            {
-                var target = rec.p + rec.normal + RandomUnitVector();
-                return 0.5 * RayColor(new Ray(rec.p, target - rec.p), world, depth - 1);
-            }
-
-            var dir = normalize(ray.dir);
-            var t = 0.5 * (dir.y + 1);
-            return (1.0 - t) * double3(1.0, 1.0, 1.0) + t * double3(0.5, 0.7, 1.0);
-        }
-
-        double3 RandomUnitVector()
-        {
-            return normalize(RandomInUnitSphere());
-        }
+    double3 RandomUnitVector()
+    {
+        return normalize(RandomInUnitSphere());
+    }
     
-        double3 RandomInUnitSphere()
+    double3 RandomInUnitSphere()
+    {
+        while (true)
         {
-            while (true)
-            {
-                var p = randoms[tid].NextDouble3(double3(-1, -1, -1), double3(1, 1, 1));
-                if (lengthsq(p) <= 1)
-                    return p;
-            }
+            var p = random.NextDouble3(double3(-1, -1, -1), double3(1, 1, 1));
+            if (lengthsq(p) <= 1)
+                return p;
         }
     }
 
     public void Dispose()
     {
-        rayColorJobHandle.Complete();
-        world.Dispose();
     }
 
 } // class RayTracer

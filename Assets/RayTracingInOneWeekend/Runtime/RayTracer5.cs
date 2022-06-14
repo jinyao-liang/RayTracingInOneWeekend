@@ -115,7 +115,7 @@ class HittableList : Hittable
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "RayTracer5: Resulting render of normals-colored sphere with ground"; }
+    public string desc { get => "Resulting render of normals-colored sphere with ground"; }
 
     public Texture2D texture { get; private set; }
 

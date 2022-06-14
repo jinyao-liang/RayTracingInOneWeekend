@@ -7,7 +7,7 @@ namespace rtwk.RayTracer1
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "RayTracer1: First image"; }
+    public string desc { get => "First image"; }
 
     public Texture2D texture { get; private set; }
 
