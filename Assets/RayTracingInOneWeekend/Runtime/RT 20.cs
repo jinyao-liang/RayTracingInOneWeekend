@@ -5,7 +5,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer11
+namespace rtwk.RayTracer20
 {
 
 abstract class Material
@@ -149,18 +149,54 @@ class Lambertian : Material
 class Metal : Material
 {
     double3 albedo;
+    double fuzz;
 
-    public Metal(double3 a)
+    public Metal(double3 a, double f)
     {
         albedo = a;
+        fuzz = f;
     }
 
     public override bool Scatter(Ray r, HitRecord rec, out double3 attenuation, out Ray scattered, ref RandomGenerator rnd)
     {
         var reflected = reflect(normalize(r.dir), rec.normal);
-        scattered = new Ray(rec.p, reflected);
+        scattered = new Ray(rec.p, reflected + fuzz * rnd.RandomInUnitSphere());
         attenuation = albedo;
         return (dot(scattered.dir, rec.normal) > 0);
+    }
+}
+
+class Dielectric : Material
+{
+    public double ir;
+
+    public Dielectric(double i)
+    {
+        ir = i;
+    }
+
+    public override bool Scatter(Ray r, HitRecord rec, out double3 attenuation, out Ray scattered, ref RandomGenerator rnd)
+    {
+        attenuation = double3(1, 1, 1);
+        var ratio = rec.frontFace ? (1.0 / ir) : ir;
+        var dir = normalize(r.dir);
+        var cos = min(dot(-dir, rec.normal), 1.0);
+        var sin = sqrt(1 - cos * cos);
+
+        if (ratio * sin > 1.0 || reflectance(cos, ratio) > rnd.NextDouble())
+            dir = reflect(dir, rec.normal);
+        else
+            dir = refract(dir, rec.normal, ratio);
+
+        scattered = new Ray(rec.p, dir);
+        return true;
+    }
+
+    static double reflectance(double cos, double idx)
+    {
+        var r0 = (1-idx) / (1+idx);
+        r0 = r0*r0;
+        return r0 + (1-r0)*pow((1 - cos),5);
     }
 }
 
@@ -192,6 +228,16 @@ struct RandomGenerator
     {
         return random.NextDouble();
     }
+
+    public double3 RandomInUnitDisk()
+    {
+        while (true)
+        {
+            var p = double3(random.NextDouble(-1, 1), random.NextDouble(-1, 1), 0);
+            if (lengthsq(p) < 1)
+                return p;
+        }
+    }
 }
 
 class Camera
@@ -200,28 +246,44 @@ class Camera
     double3 horizontal;
     double3 vertical;
     double3 lowerLeftCorner;
+    double3 u;
+    double3 v;
+    double3 w;
+    double lensRadius;
 
-    public Camera(double aspectRatio)
+    public Camera(double3 lookfrom, double3 lookat, double3 vup, double fov, double aspectRatio,
+            double aperture,
+            double focusDist)
     {
-        var viewportHeight = 2.0;
+        var theta = radians(fov);
+        var h = tan(theta / 2); 
+        var viewportHeight = 2 * h;
         var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
 
-        origin = new double3(0, 0, 0);
-        horizontal = new double3(viewportWidth, 0, 0);
-        vertical = new double3(0, viewportHeight, 0);
-        lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
+        w = normalize(lookfrom - lookat);
+        u = cross(vup, w);
+        v = cross(w, u);
+
+        origin = lookfrom;
+        horizontal = focusDist * viewportWidth * u;
+        vertical = focusDist * viewportHeight * v;
+        lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - focusDist * w;
+
+        lensRadius = aperture / 2;
     }
 
-    public Ray GetRay(double u, double v)
+    public Ray GetRay(double s, double t, double3 randomDisk)
     {
-        return new Ray(origin, lowerLeftCorner + u*horizontal + v*vertical - origin);
+        var rd = lensRadius * randomDisk;
+        var offset = u * rd.x + v * rd.y;
+        return new Ray(origin + offset, 
+        lowerLeftCorner + s*horizontal + t*vertical - origin - offset);
     }
 }
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Shiny metal"; }
+    public string desc { get => "Spheres with depth-of-field"; }
 
     public Texture2D texture { get; private set; }
 
@@ -239,28 +301,24 @@ public class RayTracer : IRayTracer
         var sampleScale = 1.0 / samplesPerPixel;
         var maxDepth = 50;
 
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
-
-
         var matGround = new Lambertian(double3(0.8, 0.8, 0.0));
-        var matCenter = new Lambertian(double3(0.7, 0.3, 0.3));
-        var matLeft = new Metal(double3(0.8, 0.8, 0.8));
-        var matRight = new Metal(double3(0.8, 0.6, 0.2));
+        var matCenter = new Lambertian(double3(0.1, 0.2, 0.5));
+        var matLeft = new Dielectric(1.5);
+        var matRight = new Metal(double3(0.8, 0.6, 0.2), 0.0);
 
         var world = new HittableList();
         world.Add(new Sphere(double3(0, -100.5, -1), 100, matGround));
         world.Add(new Sphere(double3(0, 0, -1), 0.5, matCenter));
         world.Add(new Sphere(double3(-1, 0, -1), 0.5, matLeft));
+        world.Add(new Sphere(double3(-1, 0, -1), -0.45, matLeft));
         world.Add(new Sphere(double3(1, 0, -1), 0.5, matRight));
 
-        var cam = new Camera(aspectRatio);
+        var lookfrom = double3(3,3,2);
+        var lookat = double3(0,0,-1);
+        var vup = double3(0,1,0);
+        var dist_to_focus = length(lookfrom-lookat);
+        var aperture = 2.0;
+        var cam = new Camera(lookfrom, lookat, vup, 20, aspectRatio, aperture, dist_to_focus);
 
         var tex = new Texture2D(imageWidth, imageHeight, TextureFormat.RGB24, false);
         var data = tex.GetRawTextureData<Color24>();
@@ -274,7 +332,7 @@ public class RayTracer : IRayTracer
                 {
                     var u = (double)(x + random.NextDouble()) / (imageWidth - 1);
                     var v = (double)(y + random.NextDouble()) / (imageHeight - 1);
-                    color += RayColor(cam.GetRay(u, v), world, maxDepth);
+                    color += RayColor(cam.GetRay(u, v, random.RandomInUnitDisk()), world, maxDepth);
                 }
 
                 color = sqrt(color * sampleScale);

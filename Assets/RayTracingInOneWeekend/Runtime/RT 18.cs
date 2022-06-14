@@ -5,7 +5,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer15
+namespace rtwk.RayTracer18
 {
 
 abstract class Material
@@ -237,16 +237,21 @@ class Camera
     double3 vertical;
     double3 lowerLeftCorner;
 
-    public Camera(double aspectRatio)
+    public Camera(double3 lookfrom, double3 lookat, double3 vup, double fov, double aspectRatio)
     {
-        var viewportHeight = 2.0;
+        var theta = radians(fov);
+        var h = tan(theta / 2); 
+        var viewportHeight = 2 * h;
         var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
 
-        origin = new double3(0, 0, 0);
-        horizontal = new double3(viewportWidth, 0, 0);
-        vertical = new double3(0, viewportHeight, 0);
-        lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
+        var w = normalize(lookfrom - lookat);
+        var u = cross(vup, w);
+        var v = cross(w, u);
+
+        origin = lookfrom;
+        horizontal = viewportWidth * u;
+        vertical = viewportHeight * v;
+        lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - w;
     }
 
     public Ray GetRay(double u, double v)
@@ -257,7 +262,7 @@ class Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "A hollow glass sphere"; }
+    public string desc { get => "A distant view"; }
 
     public Texture2D texture { get; private set; }
 
@@ -275,16 +280,6 @@ public class RayTracer : IRayTracer
         var sampleScale = 1.0 / samplesPerPixel;
         var maxDepth = 50;
 
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
-
-
         var matGround = new Lambertian(double3(0.8, 0.8, 0.0));
         var matCenter = new Lambertian(double3(0.1, 0.2, 0.5));
         var matLeft = new Dielectric(1.5);
@@ -294,10 +289,11 @@ public class RayTracer : IRayTracer
         world.Add(new Sphere(double3(0, -100.5, -1), 100, matGround));
         world.Add(new Sphere(double3(0, 0, -1), 0.5, matCenter));
         world.Add(new Sphere(double3(-1, 0, -1), 0.5, matLeft));
-        world.Add(new Sphere(double3(-1, 0, -1), -0.4, matLeft));
+        world.Add(new Sphere(double3(-1, 0, -1), -0.45, matLeft));
         world.Add(new Sphere(double3(1, 0, -1), 0.5, matRight));
 
-        var cam = new Camera(aspectRatio);
+        var cam = new Camera(double3(-2,2,1), double3(0,0,-1), double3(0,1,0), 90.0, aspectRatio);
+        //var cam = new Camera(double3(-2,2,1), double3(0,0,-1), double3(0,1,0), 20.0, aspectRatio);
 
         var tex = new Texture2D(imageWidth, imageHeight, TextureFormat.RGB24, false);
         var data = tex.GetRawTextureData<Color24>();

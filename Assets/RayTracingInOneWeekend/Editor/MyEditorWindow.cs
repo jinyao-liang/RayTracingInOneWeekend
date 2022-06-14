@@ -23,21 +23,31 @@ public class MyEditorWindow : EditorWindow
     
     static Type[] rayTracerPairList = new Type[] {
         typeof(rtwk.RayTracer8.RayTracer),
-        typeof(rtwk.RayTracer8mt.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer8.RayTracer),
         typeof(rtwk.RayTracer9.RayTracer),
-        typeof(rtwk.RayTracer9mt.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer9.RayTracer),
         typeof(rtwk.RayTracer10.RayTracer),
-        typeof(rtwk.RayTracer10mt.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer10.RayTracer),
         typeof(rtwk.RayTracer11.RayTracer),
-        typeof(rtwk.RayTracer11mt.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer11.RayTracer),
         typeof(rtwk.RayTracer12.RayTracer),
-        typeof(rtwk.RayTracer12mt.RayTracer),
-        typeof(rtwk.RayTracer13.RayTracer),
-        typeof(rtwk.RayTracer13mt.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer12.RayTracer),
         typeof(rtwk.RayTracer14.RayTracer),
-        typeof(rtwk.RayTracer14mt.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer14.RayTracer),
         typeof(rtwk.RayTracer15.RayTracer),
-        typeof(rtwk.RayTracer15mt.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer15.RayTracer),
+        typeof(rtwk.RayTracer16.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer16.RayTracer),
+        typeof(rtwk.RayTracer17.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer17.RayTracer),
+        typeof(rtwk.RayTracer18.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer18.RayTracer),
+        typeof(rtwk.RayTracer19.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer19.RayTracer),
+        typeof(rtwk.RayTracer20.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer20.RayTracer),
+        typeof(rtwk.RayTracer21.RayTracer),
+        typeof(rtwk.MultiThread.RayTracer21.RayTracer),
     };
 
     IRayTracer activeRayTracer;
@@ -62,7 +72,7 @@ public class MyEditorWindow : EditorWindow
         GUI.enabled = activeRayTracer == null;
         for(int i = 0; i < rayTracerList.Length; i++)
         {
-            if(GUILayout.Button($"Run {GetRayTracerTypeName(rayTracerList[i])}"))
+            if(GUILayout.Button($"{GetRayTracerTypeName(rayTracerList[i])}"))
             {
                 var rayTracer = (IRayTracer)Activator.CreateInstance(rayTracerList[i]);
                 EditorCoroutineUtility.StartCoroutine(RunRayTracer(rayTracer), this);
@@ -71,14 +81,14 @@ public class MyEditorWindow : EditorWindow
         for(int i = 0; i < rayTracerPairList.Length; i+=2)
         {
             EditorGUILayout.BeginHorizontal();
-            if(GUILayout.Button($"Run {GetRayTracerTypeName(rayTracerPairList[i])}"))
+            if(GUILayout.Button($"{GetRayTracerTypeName(rayTracerPairList[i])}"))
             {
                 var rayTracer = (IRayTracer)Activator.CreateInstance(rayTracerPairList[i]);
                 EditorCoroutineUtility.StartCoroutine(RunRayTracer(rayTracer), this);
             }
             if (i+1 < rayTracerPairList.Length)
             {
-                if(GUILayout.Button($"Run {GetRayTracerTypeName(rayTracerPairList[i+1])}"))
+                if(GUILayout.Button($"{GetRayTracerTypeName(rayTracerPairList[i+1])}"))
                 {
                     var rayTracer = (IRayTracer)Activator.CreateInstance(rayTracerPairList[i+1]);
                     EditorCoroutineUtility.StartCoroutine(RunRayTracer(rayTracer), this);

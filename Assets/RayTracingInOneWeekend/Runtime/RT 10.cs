@@ -159,15 +159,6 @@ public class RayTracer : IRayTracer
         var sampleScale = 1.0 / samplesPerPixel;
         var maxDepth = 50;
 
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
-
         var world = new HittableList();
         world.Add(new Sphere(double3(0, 0, -1), 0.5));
         world.Add(new Sphere(double3(0, -100.5, -1), 100));

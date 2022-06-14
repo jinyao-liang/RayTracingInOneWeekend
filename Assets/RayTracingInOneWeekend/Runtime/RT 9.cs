@@ -4,7 +4,7 @@ using UnityEngine;
 using Unity.Mathematics;
 using static Unity.Mathematics.math;
 
-namespace rtwk.RayTracer6
+namespace rtwk.RayTracer9
 {
 
 struct Ray
@@ -141,7 +141,7 @@ class Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "antialiasing"; }
+    public string desc { get => "Correct rendering of Lambertian spheres"; }
 
     public Texture2D texture { get; private set; }
 
@@ -157,15 +157,7 @@ public class RayTracer : IRayTracer
 
         var samplesPerPixel = 100;
         var sampleScale = 1.0 / samplesPerPixel;
-
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
+        var maxDepth = 50;
 
         var world = new HittableList();
         world.Add(new Sphere(double3(0, 0, -1), 0.5));
@@ -185,10 +177,10 @@ public class RayTracer : IRayTracer
                 {
                     var u = (double)(x + random.NextDouble()) / (imageWidth - 1);
                     var v = (double)(y + random.NextDouble()) / (imageHeight - 1);
-                    color += RayColor(cam.GetRay(u, v), world);
+                    color += RayColor(cam.GetRay(u, v), world, maxDepth);
                 }
 
-                color *= sampleScale;
+                color = sqrt(color * sampleScale);
                 color = clamp(color, double3(0, 0, 0), double3(0.999, 0.999, 0.999));
 
                 data[y * imageWidth + x] = Color24.FromDouble3(color);
@@ -199,14 +191,35 @@ public class RayTracer : IRayTracer
         texture = tex;
     }
     
-    double3 RayColor(Ray ray, HittableList world)
+    double3 RayColor(Ray ray, HittableList world, int depth)
     {
-        if (world.Hit(ray, 0, double.PositiveInfinity, out var rec))
-            return 0.5 * (rec.normal + double3(1, 1, 1));
+        if (depth <= 0)
+            return double3(0, 0, 0);
+
+        if (world.Hit(ray, 0.001, double.PositiveInfinity, out var rec))
+        {
+            var target = rec.p + rec.normal + RandomUnitVector();
+            return 0.5 * RayColor(new Ray(rec.p, target - rec.p), world, depth - 1);
+        }
 
         var dir = normalize(ray.dir);
         var t = 0.5 * (dir.y + 1);
         return (1.0 - t) * double3(1.0, 1.0, 1.0) + t * double3(0.5, 0.7, 1.0);
+    }
+
+    double3 RandomUnitVector()
+    {
+        return normalize(RandomInUnitSphere());
+    }
+    
+    double3 RandomInUnitSphere()
+    {
+        while (true)
+        {
+            var p = random.NextDouble3(double3(-1, -1, -1), double3(1, 1, 1));
+            if (lengthsq(p) <= 1)
+                return p;
+        }
     }
 
     public void Dispose()

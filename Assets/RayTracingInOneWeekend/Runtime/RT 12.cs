@@ -241,16 +241,6 @@ public class RayTracer : IRayTracer
         var sampleScale = 1.0 / samplesPerPixel;
         var maxDepth = 50;
 
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
-
-
         var matGround = new Lambertian(double3(0.8, 0.8, 0.0));
         var matCenter = new Lambertian(double3(0.7, 0.3, 0.3));
         var matLeft = new Metal(double3(0.8, 0.8, 0.8), 0.3);

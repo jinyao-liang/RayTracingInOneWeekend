@@ -10,7 +10,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer13mt
+namespace rtwk.MultiThread.RayTracer15
 {
 
 struct Ray
@@ -171,7 +171,7 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Glass sphere that always refracts"; }
+    public string desc { get => "Glass sphere that sometimes refracts"; }
 
     public Texture2D texture { get; private set; }
 
@@ -191,19 +191,10 @@ public class RayTracer : IRayTracer
         var sampleScale = 1.0 / samplesPerPixel;
         var maxDepth = 50;
 
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
-
         var matGround = new Material { type = MaterialType.Lambertian, albedo = double3(0.8, 0.8, 0.0) };
-        var matCenter = new Material { type = MaterialType.Dielectric, ir = 1.5 };
+        var matCenter = new Material { type = MaterialType.Lambertian, albedo = double3(0.1, 0.2, 0.5) };
         var matLeft = new Material { type = MaterialType.Dielectric, ir = 1.5 };
-        var matRight = new Material { type = MaterialType.Metal, albedo = double3(0.8, 0.6, 0.2), fuzz = 1.0 };
+        var matRight = new Material { type = MaterialType.Metal, albedo = double3(0.8, 0.6, 0.2), fuzz = 0 };
 
         world = new HittableList(new List<Sphere> {
             new Sphere(double3(0, -100.5, -1), 100, matGround),
@@ -336,8 +327,16 @@ public class RayTracer : IRayTracer
         {
             attenuation = double3(1, 1, 1);
             var ratio = rec.frontFace ? (1.0 / mat.ir) : mat.ir;
-            var refracted = refract(normalize(r.dir), rec.normal, ratio);
-            scattered = new Ray(rec.p, refracted);
+            var dir = normalize(r.dir);
+            var cos = min(dot(-dir, rec.normal), 1.0);
+            var sin = sqrt(1 - cos * cos);
+
+            if (ratio * sin > 1.0)
+                dir = reflect(dir, rec.normal);
+            else
+                dir = refract(dir, rec.normal, ratio);
+
+            scattered = new Ray(rec.p, dir);
             return true;
         }
 

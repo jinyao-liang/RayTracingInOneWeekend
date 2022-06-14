@@ -10,7 +10,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer11mt
+namespace rtwk.MultiThread.RayTracer19
 {
 
 struct Ray
@@ -34,18 +34,15 @@ enum MaterialType
 {
     Lambertian,
     Metal,
+    Dielectric,
 }
 
 struct Material
 {
     public MaterialType type;
     public double3 albedo;
-
-    public Material(MaterialType t, double3 a)
-    {
-        type = t;
-        albedo = a;
-    }
+    public double fuzz;
+    public double ir;
 }
 
 struct HitRecord
@@ -154,16 +151,21 @@ struct Camera
     double3 vertical;
     double3 lowerLeftCorner;
 
-    public Camera(double aspectRatio)
+    public Camera(double3 lookfrom, double3 lookat, double3 vup, double fov, double aspectRatio)
     {
-        var viewportHeight = 2.0;
+        var theta = radians(fov);
+        var h = tan(theta / 2); 
+        var viewportHeight = 2 * h;
         var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
 
-        origin = new double3(0, 0, 0);
-        horizontal = new double3(viewportWidth, 0, 0);
-        vertical = new double3(0, viewportHeight, 0);
-        lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
+        var w = normalize(lookfrom - lookat);
+        var u = cross(vup, w);
+        var v = cross(w, u);
+
+        origin = lookfrom;
+        horizontal = viewportWidth * u;
+        vertical = viewportHeight * v;
+        lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - w;
     }
 
     public Ray GetRay(double u, double v)
@@ -174,7 +176,7 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Shiny metal"; }
+    public string desc { get => "Zooming in"; }
 
     public Texture2D texture { get; private set; }
 
@@ -194,28 +196,20 @@ public class RayTracer : IRayTracer
         var sampleScale = 1.0 / samplesPerPixel;
         var maxDepth = 50;
 
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
-
-        var matGround = new Material(MaterialType.Lambertian, double3(0.8, 0.8, 0.0));
-        var matCenter = new Material(MaterialType.Lambertian, double3(0.7, 0.3, 0.3));
-        var matLeft = new Material(MaterialType.Metal, double3(0.8, 0.8, 0.8));
-        var matRight = new Material(MaterialType.Metal, double3(0.8, 0.6, 0.2));
+        var matGround = new Material { type = MaterialType.Lambertian, albedo = double3(0.8, 0.8, 0.0) };
+        var matCenter = new Material { type = MaterialType.Lambertian, albedo = double3(0.1, 0.2, 0.5) };
+        var matLeft = new Material { type = MaterialType.Dielectric, ir = 1.5 };
+        var matRight = new Material { type = MaterialType.Metal, albedo = double3(0.8, 0.6, 0.2), fuzz = 0 };
 
         world = new HittableList(new List<Sphere> {
             new Sphere(double3(0, -100.5, -1), 100, matGround),
             new Sphere(double3(0, 0, -1), 0.5, matCenter),
             new Sphere(double3(-1, 0, -1), 0.5, matLeft),
+            new Sphere(double3(-1, 0, -1), -0.45, matLeft),
             new Sphere(double3(1, 0, -1), 0.5, matRight)
         });
 
-        var cam = new Camera(aspectRatio);
+        var cam = new Camera(double3(-2,2,1), double3(0,0,-1), double3(0,1,0), 20.0, aspectRatio);
 
         texture = new Texture2D(imageWidth, imageHeight, TextureFormat.RGB24, false, false);
         var textureData = texture.GetRawTextureData<Color24>();
@@ -305,9 +299,14 @@ public class RayTracer : IRayTracer
 
         public bool Scatter(Material mat, Ray r, HitRecord rec, out double3 attenuation, out Ray scattered)
         {
-            if (mat.type == MaterialType.Metal)
+            switch (mat.type)
+            {
+            case MaterialType.Metal:
                  return MetalScatter(mat, r, rec, out attenuation, out scattered);
-            
+            case MaterialType.Dielectric:
+                 return DielectricScatter(mat, r, rec, out attenuation, out scattered);
+            }
+
             return LambertianScatter(mat, r, rec, out attenuation, out scattered);
         }
 
@@ -325,9 +324,33 @@ public class RayTracer : IRayTracer
         bool MetalScatter(Material mat, Ray r, HitRecord rec, out double3 attenuation, out Ray scattered)
         {
             var reflected = reflect(normalize(r.dir), rec.normal);
-            scattered = new Ray(rec.p, reflected);
+            scattered = new Ray(rec.p, reflected + mat.fuzz * RandomInUnitSphere());
             attenuation = mat.albedo;
             return (dot(scattered.dir, rec.normal) > 0);
+        }
+        
+        bool DielectricScatter(Material mat, Ray r, HitRecord rec, out double3 attenuation, out Ray scattered)
+        {
+            attenuation = double3(1, 1, 1);
+            var ratio = rec.frontFace ? (1.0 / mat.ir) : mat.ir;
+            var dir = normalize(r.dir);
+            var cos = min(dot(-dir, rec.normal), 1.0);
+            var sin = sqrt(1 - cos * cos);
+
+            if (ratio * sin > 1.0 || reflectance(cos, ratio) > NextDouble())
+                dir = reflect(dir, rec.normal);
+            else
+                dir = refract(dir, rec.normal, ratio);
+
+            scattered = new Ray(rec.p, dir);
+            return true;
+        }
+
+        double reflectance(double cos, double idx) 
+        {
+            var r0 = (1-idx) / (1+idx);
+            r0 = r0*r0;
+            return r0 + (1-r0)*pow((1 - cos),5);
         }
 
         double NextDouble()

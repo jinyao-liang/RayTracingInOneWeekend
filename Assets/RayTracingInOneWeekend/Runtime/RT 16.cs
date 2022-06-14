@@ -5,7 +5,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer13
+namespace rtwk.RayTracer16
 {
 
 abstract class Material
@@ -179,9 +179,24 @@ class Dielectric : Material
     {
         attenuation = double3(1, 1, 1);
         var ratio = rec.frontFace ? (1.0 / ir) : ir;
-        var refracted = refract(normalize(r.dir), rec.normal, ratio);
-        scattered = new Ray(rec.p, refracted);
+        var dir = normalize(r.dir);
+        var cos = min(dot(-dir, rec.normal), 1.0);
+        var sin = sqrt(1 - cos * cos);
+
+        if (ratio * sin > 1.0 || reflectance(cos, ratio) > rnd.NextDouble())
+            dir = reflect(dir, rec.normal);
+        else
+            dir = refract(dir, rec.normal, ratio);
+
+        scattered = new Ray(rec.p, dir);
         return true;
+    }
+
+    static double reflectance(double cos, double idx)
+    {
+        var r0 = (1-idx) / (1+idx);
+        r0 = r0*r0;
+        return r0 + (1-r0)*pow((1 - cos),5);
     }
 }
 
@@ -242,7 +257,7 @@ class Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Glass sphere that always refracts"; }
+    public string desc { get => "A hollow glass sphere"; }
 
     public Texture2D texture { get; private set; }
 
@@ -260,25 +275,16 @@ public class RayTracer : IRayTracer
         var sampleScale = 1.0 / samplesPerPixel;
         var maxDepth = 50;
 
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
-
-
         var matGround = new Lambertian(double3(0.8, 0.8, 0.0));
-        var matCenter = new Dielectric(1.5);
+        var matCenter = new Lambertian(double3(0.1, 0.2, 0.5));
         var matLeft = new Dielectric(1.5);
-        var matRight = new Metal(double3(0.8, 0.6, 0.2), 1.0);
+        var matRight = new Metal(double3(0.8, 0.6, 0.2), 0.0);
 
         var world = new HittableList();
         world.Add(new Sphere(double3(0, -100.5, -1), 100, matGround));
         world.Add(new Sphere(double3(0, 0, -1), 0.5, matCenter));
         world.Add(new Sphere(double3(-1, 0, -1), 0.5, matLeft));
+        world.Add(new Sphere(double3(-1, 0, -1), -0.4, matLeft));
         world.Add(new Sphere(double3(1, 0, -1), 0.5, matRight));
 
         var cam = new Camera(aspectRatio);

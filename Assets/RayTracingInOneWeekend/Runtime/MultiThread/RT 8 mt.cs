@@ -10,7 +10,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer12mt
+namespace rtwk.MultiThread.RayTracer8
 {
 
 struct Ray
@@ -30,26 +30,6 @@ struct Ray
     }
 }
 
-enum MaterialType
-{
-    Lambertian,
-    Metal,
-}
-
-struct Material
-{
-    public MaterialType type;
-    public double3 albedo;
-    public double fuzz;
-
-    public Material(MaterialType t, double3 a, double f = 0)
-    {
-        type = t;
-        albedo = a;
-        fuzz = f;
-    }
-}
-
 struct HitRecord
 {
     public double3 p;
@@ -59,8 +39,6 @@ struct HitRecord
     public double t;
 
     public bool frontFace;
-
-    public Material mat;
 
     public void SetFaceNormal(Ray r, double3 outNormal)
     {
@@ -73,13 +51,11 @@ struct Sphere
 {
     public double3 center;
     public double radius;
-    public Material mat;
 
-    public Sphere(double3 c, double r, Material m)
+    public Sphere(double3 c, double r)
     {
         center = c;
         radius = r;
-        mat = m;
     }
 
     public bool Hit(Ray r, double tMin, double tMax, out HitRecord rec)
@@ -103,7 +79,6 @@ struct Sphere
                 return false;
         }
 
-        rec.mat = mat;
         rec.t = root;
         rec.p = r.At(rec.t);
         rec.SetFaceNormal(r, (rec.p - center) / radius);
@@ -176,7 +151,7 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Fuzzed metal"; }
+    public string desc { get => "Diffuse sphere, with gamma correction"; }
 
     public Texture2D texture { get; private set; }
 
@@ -196,25 +171,9 @@ public class RayTracer : IRayTracer
         var sampleScale = 1.0 / samplesPerPixel;
         var maxDepth = 50;
 
-        var viewportHeight = 2.0;
-        var viewportWidth = viewportHeight * aspectRatio;
-        var focalLength = 1.0;
-
-        var origin = new double3(0, 0, 0);
-        var horizontal = new double3(viewportWidth, 0, 0);
-        var vertical = new double3(0, viewportHeight, 0);
-        var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
-
-        var matGround = new Material(MaterialType.Lambertian, double3(0.8, 0.8, 0.0));
-        var matCenter = new Material(MaterialType.Lambertian, double3(0.7, 0.3, 0.3));
-        var matLeft = new Material(MaterialType.Metal, double3(0.8, 0.8, 0.8), 0.3);
-        var matRight = new Material(MaterialType.Metal, double3(0.8, 0.6, 0.2), 1.0);
-
         world = new HittableList(new List<Sphere> {
-            new Sphere(double3(0, -100.5, -1), 100, matGround),
-            new Sphere(double3(0, 0, -1), 0.5, matCenter),
-            new Sphere(double3(-1, 0, -1), 0.5, matLeft),
-            new Sphere(double3(1, 0, -1), 0.5, matRight)
+            new Sphere(double3(0, 0, -1), 0.5),
+            new Sphere(double3(0, -100.5, -1), 100),
         });
 
         var cam = new Camera(aspectRatio);
@@ -240,7 +199,7 @@ public class RayTracer : IRayTracer
             world = world,
             pixels = textureData
         };
-        rayColorJobHandle = job.Schedule(imageWidth * imageHeight, 64);
+        rayColorJobHandle = job.Schedule(imageWidth * imageHeight, 32);
     }
     
     [BurstCompile(CompileSynchronously = true)]
@@ -291,45 +250,13 @@ public class RayTracer : IRayTracer
 
             if (world.Hit(ray, 0.001, double.PositiveInfinity, out var rec))
             {
-                Ray scattered;
-                double3 attenuation;
-                if (Scatter(rec.mat, ray, rec, out attenuation, out scattered))
-                {
-                    return attenuation * RayColor(scattered, world, depth - 1);
-                }
-                return double3(0, 0, 0);
+                var target = rec.p + rec.normal + RandomInUnitSphere();
+                return 0.5 * RayColor(new Ray(rec.p, target - rec.p), world, depth - 1);
             }
 
             var dir = normalize(ray.dir);
             var t = 0.5 * (dir.y + 1);
             return (1.0 - t) * double3(1.0, 1.0, 1.0) + t * double3(0.5, 0.7, 1.0);
-        }
-
-        public bool Scatter(Material mat, Ray r, HitRecord rec, out double3 attenuation, out Ray scattered)
-        {
-            if (mat.type == MaterialType.Metal)
-                 return MetalScatter(mat, r, rec, out attenuation, out scattered);
-            
-            return LambertianScatter(mat, r, rec, out attenuation, out scattered);
-        }
-
-        bool LambertianScatter(Material mat, Ray r, HitRecord rec, out double3 attenuation, out Ray scattered)
-        {
-            var dir = rec.normal + RandomUnitVector();
-            if (lengthsq(abs(dir)) < 0.0001)
-                dir = rec.normal;
-
-            scattered = new Ray(rec.p, dir);
-            attenuation = mat.albedo;
-            return true;
-        }
-
-        bool MetalScatter(Material mat, Ray r, HitRecord rec, out double3 attenuation, out Ray scattered)
-        {
-            var reflected = reflect(normalize(r.dir), rec.normal);
-            scattered = new Ray(rec.p, reflected + mat.fuzz * RandomInUnitSphere());
-            attenuation = mat.albedo;
-            return (dot(scattered.dir, rec.normal) > 0);
         }
 
         double NextDouble()
@@ -356,11 +283,6 @@ public class RayTracer : IRayTracer
                 if (lengthsq(p) <= 1)
                     return p;
             }
-        }
-        
-        double3 RandomUnitVector()
-        {
-            return normalize(RandomInUnitSphere());
         }
     }
 
