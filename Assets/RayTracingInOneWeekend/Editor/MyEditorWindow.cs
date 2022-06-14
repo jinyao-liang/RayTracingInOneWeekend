@@ -23,12 +23,15 @@ public class MyEditorWindow : EditorWindow
     
     static Type[] rayTracerPairList = new Type[] {
         typeof(rtwk.RayTracer8.RayTracer),
-        typeof(rtwk.RayTracer8m.RayTracer),
+        typeof(rtwk.RayTracer8mt.RayTracer),
         typeof(rtwk.RayTracer9.RayTracer),
-        typeof(rtwk.RayTracer9m.RayTracer),
+        typeof(rtwk.RayTracer9mt.RayTracer),
         typeof(rtwk.RayTracer10.RayTracer),
-        typeof(rtwk.RayTracer10m.RayTracer),
+        typeof(rtwk.RayTracer10mt.RayTracer),
         typeof(rtwk.RayTracer11.RayTracer),
+        typeof(rtwk.RayTracer11mt.RayTracer),
+        typeof(rtwk.RayTracer12.RayTracer),
+        typeof(rtwk.RayTracer12mt.RayTracer),
     };
 
     IRayTracer activeRayTracer;

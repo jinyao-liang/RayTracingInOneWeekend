@@ -5,7 +5,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer11
+namespace rtwk.RayTracer12
 {
 
 abstract class Material
@@ -149,16 +149,18 @@ class Lambertian : Material
 class Metal : Material
 {
     double3 albedo;
+    double fuzz;
 
-    public Metal(double3 a)
+    public Metal(double3 a, double f)
     {
         albedo = a;
+        fuzz = f;
     }
 
     public override bool Scatter(Ray r, HitRecord rec, out double3 attenuation, out Ray scattered, ref RandomGenerator rnd)
     {
         var reflected = reflect(normalize(r.dir), rec.normal);
-        scattered = new Ray(rec.p, reflected);
+        scattered = new Ray(rec.p, reflected + fuzz * rnd.RandomInUnitSphere());
         attenuation = albedo;
         return (dot(scattered.dir, rec.normal) > 0);
     }
@@ -251,8 +253,8 @@ public class RayTracer : IRayTracer
 
         var matGround = new Lambertian(double3(0.8, 0.8, 0.0));
         var matCenter = new Lambertian(double3(0.7, 0.3, 0.3));
-        var matLeft = new Metal(double3(0.8, 0.8, 0.8));
-        var matRight = new Metal(double3(0.8, 0.6, 0.2));
+        var matLeft = new Metal(double3(0.8, 0.8, 0.8), 0.3);
+        var matRight = new Metal(double3(0.8, 0.6, 0.2), 1.0);
 
         var world = new HittableList();
         world.Add(new Sphere(double3(0, -100.5, -1), 100, matGround));

@@ -10,7 +10,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer9m
+namespace rtwk.RayTracer8mt
 {
 
 struct Ray
@@ -151,7 +151,7 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Correct rendering of Lambertian spheres"; }
+    public string desc { get => "Diffuse sphere, with gamma correction"; }
 
     public Texture2D texture { get; private set; }
 
@@ -229,7 +229,7 @@ public class RayTracer : IRayTracer
         [WriteOnly]
         public NativeArray<Color24> pixels;
 
-        [Unity.Collections.LowLevel.Unsafe.NativeSetThreadIndex]
+        [NativeSetThreadIndex]
         private int nativeThreadIndex;
 
         public void Execute(int i)
@@ -257,9 +257,9 @@ public class RayTracer : IRayTracer
             if (depth <= 0)
                 return double3(0, 0, 0);
 
-            if (world.Hit(ray, 0.001, double.PositiveInfinity, out var rec))
+            if (world.Hit(ray, 0, double.PositiveInfinity, out var rec))
             {
-                var target = rec.p + rec.normal + RandomUnitVector();
+                var target = rec.p + rec.normal + RandomInUnitSphere();
                 return 0.5 * RayColor(new Ray(rec.p, target - rec.p), world, depth - 1);
             }
 
@@ -292,11 +292,6 @@ public class RayTracer : IRayTracer
                 if (lengthsq(p) <= 1)
                     return p;
             }
-        }
-        
-        double3 RandomUnitVector()
-        {
-            return normalize(RandomInUnitSphere());
         }
     }
 
