@@ -151,7 +151,7 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Correct rendering of Lambertian spheres"; }
+    public string desc { get => "Rendering of diffuse spheres with hemispherical scattering"; }
 
     public Texture2D texture { get; private set; }
 

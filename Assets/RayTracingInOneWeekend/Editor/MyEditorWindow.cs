@@ -32,6 +32,12 @@ public class MyEditorWindow : EditorWindow
         typeof(rtwk.RayTracer11mt.RayTracer),
         typeof(rtwk.RayTracer12.RayTracer),
         typeof(rtwk.RayTracer12mt.RayTracer),
+        typeof(rtwk.RayTracer13.RayTracer),
+        typeof(rtwk.RayTracer13mt.RayTracer),
+        typeof(rtwk.RayTracer14.RayTracer),
+        typeof(rtwk.RayTracer14mt.RayTracer),
+        typeof(rtwk.RayTracer15.RayTracer),
+        typeof(rtwk.RayTracer15mt.RayTracer),
     };
 
     IRayTracer activeRayTracer;
@@ -40,9 +46,9 @@ public class MyEditorWindow : EditorWindow
 
     EditorWaitForSeconds waitForOneSecond = new EditorWaitForSeconds(1.0f);
 
-    [MenuItem ("Window/rtwk")]
+    [MenuItem ("rtwk/Show Window")]
     public static void  ShowWindow () {
-        EditorWindow.GetWindow(typeof(MyEditorWindow));
+        EditorWindow.GetWindow(typeof(MyEditorWindow), false, "Ray Tracing in One Weekend");
     }
 
     string GetRayTracerTypeName(Type t)

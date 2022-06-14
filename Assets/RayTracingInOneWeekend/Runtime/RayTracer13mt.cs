@@ -10,7 +10,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer12mt
+namespace rtwk.RayTracer13mt
 {
 
 struct Ray
@@ -34,6 +34,7 @@ enum MaterialType
 {
     Lambertian,
     Metal,
+    Dielectric,
 }
 
 struct Material
@@ -41,13 +42,7 @@ struct Material
     public MaterialType type;
     public double3 albedo;
     public double fuzz;
-
-    public Material(MaterialType t, double3 a, double f = 0)
-    {
-        type = t;
-        albedo = a;
-        fuzz = f;
-    }
+    public double ir;
 }
 
 struct HitRecord
@@ -176,7 +171,7 @@ struct Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Fuzzed metal"; }
+    public string desc { get => "Glass sphere that always refracts"; }
 
     public Texture2D texture { get; private set; }
 
@@ -205,10 +200,10 @@ public class RayTracer : IRayTracer
         var vertical = new double3(0, viewportHeight, 0);
         var lowerLeftCorner = origin - horizontal / 2 - vertical / 2 - double3(0, 0, focalLength);
 
-        var matGround = new Material(MaterialType.Lambertian, double3(0.8, 0.8, 0.0));
-        var matCenter = new Material(MaterialType.Lambertian, double3(0.7, 0.3, 0.3));
-        var matLeft = new Material(MaterialType.Metal, double3(0.8, 0.8, 0.8), 0.3);
-        var matRight = new Material(MaterialType.Metal, double3(0.8, 0.6, 0.2), 1.0);
+        var matGround = new Material { type = MaterialType.Lambertian, albedo = double3(0.8, 0.8, 0.0) };
+        var matCenter = new Material { type = MaterialType.Dielectric, ir = 1.5 };
+        var matLeft = new Material { type = MaterialType.Dielectric, ir = 1.5 };
+        var matRight = new Material { type = MaterialType.Metal, albedo = double3(0.8, 0.6, 0.2), fuzz = 1.0 };
 
         world = new HittableList(new List<Sphere> {
             new Sphere(double3(0, -100.5, -1), 100, matGround),
@@ -307,9 +302,14 @@ public class RayTracer : IRayTracer
 
         public bool Scatter(Material mat, Ray r, HitRecord rec, out double3 attenuation, out Ray scattered)
         {
-            if (mat.type == MaterialType.Metal)
+            switch (mat.type)
+            {
+            case MaterialType.Metal:
                  return MetalScatter(mat, r, rec, out attenuation, out scattered);
-            
+            case MaterialType.Dielectric:
+                 return DielectricScatter(mat, r, rec, out attenuation, out scattered);
+            }
+
             return LambertianScatter(mat, r, rec, out attenuation, out scattered);
         }
 
@@ -330,6 +330,15 @@ public class RayTracer : IRayTracer
             scattered = new Ray(rec.p, reflected + mat.fuzz * RandomInUnitSphere());
             attenuation = mat.albedo;
             return (dot(scattered.dir, rec.normal) > 0);
+        }
+        
+        bool DielectricScatter(Material mat, Ray r, HitRecord rec, out double3 attenuation, out Ray scattered)
+        {
+            attenuation = double3(1, 1, 1);
+            var ratio = rec.frontFace ? (1.0 / mat.ir) : mat.ir;
+            var refracted = refract(normalize(r.dir), rec.normal, ratio);
+            scattered = new Ray(rec.p, refracted);
+            return true;
         }
 
         double NextDouble()

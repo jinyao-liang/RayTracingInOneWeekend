@@ -5,7 +5,7 @@ using Unity.Mathematics;
 using static Unity.Mathematics.math;
 using Random = Unity.Mathematics.Random;
 
-namespace rtwk.RayTracer12
+namespace rtwk.RayTracer14
 {
 
 abstract class Material
@@ -166,6 +166,33 @@ class Metal : Material
     }
 }
 
+class Dielectric : Material
+{
+    public double ir;
+
+    public Dielectric(double i)
+    {
+        ir = i;
+    }
+
+    public override bool Scatter(Ray r, HitRecord rec, out double3 attenuation, out Ray scattered, ref RandomGenerator rnd)
+    {
+        attenuation = double3(1, 1, 1);
+        var ratio = rec.frontFace ? (1.0 / ir) : ir;
+        var dir = normalize(r.dir);
+        var cos = min(dot(-dir, rec.normal), 1.0);
+        var sin = sqrt(1 - cos * cos);
+
+        if (ratio * sin > 1.0)
+            dir = reflect(dir, rec.normal);
+        else
+            dir = refract(dir, rec.normal, ratio);
+
+        scattered = new Ray(rec.p, dir);
+        return true;
+    }
+}
+
 struct RandomGenerator
 {
     Random random;
@@ -223,7 +250,7 @@ class Camera
 
 public class RayTracer : IRayTracer
 {
-    public string desc { get => "Fuzzed metal"; }
+    public string desc { get => "Glass sphere that sometimes refracts"; }
 
     public Texture2D texture { get; private set; }
 
@@ -252,9 +279,9 @@ public class RayTracer : IRayTracer
 
 
         var matGround = new Lambertian(double3(0.8, 0.8, 0.0));
-        var matCenter = new Lambertian(double3(0.7, 0.3, 0.3));
-        var matLeft = new Metal(double3(0.8, 0.8, 0.8), 0.3);
-        var matRight = new Metal(double3(0.8, 0.6, 0.2), 1.0);
+        var matCenter = new Lambertian(double3(0.1, 0.2, 0.5));
+        var matLeft = new Dielectric(1.5);
+        var matRight = new Metal(double3(0.8, 0.6, 0.2), 0.0);
 
         var world = new HittableList();
         world.Add(new Sphere(double3(0, -100.5, -1), 100, matGround));

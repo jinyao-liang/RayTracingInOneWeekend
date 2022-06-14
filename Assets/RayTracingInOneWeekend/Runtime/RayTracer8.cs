@@ -205,7 +205,7 @@ public class RayTracer : IRayTracer
         if (depth <= 0)
             return double3(0, 0, 0);
 
-        if (world.Hit(ray, 0, double.PositiveInfinity, out var rec))
+        if (world.Hit(ray, 0.001, double.PositiveInfinity, out var rec))
         {
             var target = rec.p + rec.normal + RandomInUnitSphere();
             return 0.5 * RayColor(new Ray(rec.p, target - rec.p), world, depth - 1);
