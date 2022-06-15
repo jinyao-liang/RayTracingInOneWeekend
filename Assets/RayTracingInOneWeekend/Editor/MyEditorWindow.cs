@@ -50,9 +50,9 @@ public class MyEditorWindow : EditorWindow
         typeof(rtwk.MultiThread.RayTracer21.RayTracer),
     };
 
-    IRayTracer activeRayTracer;
-    string previewDesc;
+    string rayTracerDesc;
     Texture2D previewTexture;
+    Stopwatch stopwatch;
 
     EditorWaitForSeconds waitForOneSecond = new EditorWaitForSeconds(1.0f);
 
@@ -69,7 +69,7 @@ public class MyEditorWindow : EditorWindow
     void OnGUI () {
         EditorGUILayout.Space();
 
-        GUI.enabled = activeRayTracer == null;
+        GUI.enabled = stopwatch == null;
         for(int i = 0; i < rayTracerList.Length; i++)
         {
             if(GUILayout.Button($"{GetRayTracerTypeName(rayTracerList[i])}"))
@@ -99,10 +99,13 @@ public class MyEditorWindow : EditorWindow
         GUI.enabled = true;
 
         EditorGUILayout.Space();
+        EditorGUILayout.LabelField(rayTracerDesc);
+        if (stopwatch != null)
+        {
+            EditorGUILayout.LabelField($"running: {stopwatch.Elapsed.TotalSeconds:F2} seconds...");
+        }
         if (previewTexture != null)
         {
-            EditorGUILayout.LabelField(previewDesc);
-
             var ratio = (float)previewTexture.height / previewTexture.width;
             Vector2 sz = new Vector2(EditorGUIUtility.currentViewWidth, EditorGUIUtility.currentViewWidth * ratio);
             Rect r = EditorGUILayout.GetControlRect(false, GUILayout.Height(sz.y), GUILayout.ExpandHeight(false));
@@ -113,7 +116,7 @@ public class MyEditorWindow : EditorWindow
                 var path = EditorUtility.SaveFilePanel(
                     "Save texture as PNG",
                     "",
-                    "pbr.png",
+                    "image",
                     "png");
                 if (path.Length != 0)
                 {
@@ -125,28 +128,28 @@ public class MyEditorWindow : EditorWindow
 
     public IEnumerator RunRayTracer(IRayTracer rayTracer)
     {
-        activeRayTracer = rayTracer;
+        rayTracerDesc = $"{GetRayTracerTypeName(rayTracer.GetType())}: {rayTracer.desc}";
         previewTexture = null;
 
-        var stopWatch = new Stopwatch();
-        stopWatch.Start();
+        stopwatch = new Stopwatch();
+        stopwatch.Start();
 
         rayTracer.Run();
         while (!rayTracer.isCompleted)
         {
             yield return waitForOneSecond;
+            Repaint();
         }
 
-        stopWatch.Stop();
-        Debug.Log($"{GetRayTracerTypeName(rayTracer.GetType())} finish running in {stopWatch.Elapsed.TotalSeconds:F2} seconds.");
+        stopwatch.Stop();
+        Debug.Log($"{GetRayTracerTypeName(rayTracer.GetType())} finish running in {stopwatch.Elapsed.TotalSeconds:F2} seconds.");
 
-        previewDesc = $"{GetRayTracerTypeName(activeRayTracer.GetType())}: {rayTracer.desc}";
         previewTexture = rayTracer.texture;
         previewTexture.Apply();
         Repaint();
 
         rayTracer.Dispose();
-        activeRayTracer = null;
+        stopwatch = null;
     }
 } // class MyEditorWindow
 
